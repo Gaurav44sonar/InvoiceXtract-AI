@@ -1,6 +1,36 @@
-pdf2image>=1.16.0
-python-dotenv>=1.0.0
-PyPDF2>=3.0.0
-Pillow>=9.0.0
-numpy>=1.24.0
-tqdm>=4.60.0
+# =========================
+# Core Backend
+# =========================
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.9
+
+# =========================
+# PDF Processing
+# =========================
+pdfplumber==0.11.4
+pypdf==5.1.0
+
+# =========================
+# Table Extraction (PDF)
+# =========================
+camelot-py[cv]==0.11.0
+pandas==2.2.3
+numpy==1.26.4
+
+# =========================
+# OCR (Future Image Support)
+# =========================
+pytesseract==0.3.13
+Pillow==10.4.0
+opencv-python==4.10.0.84
+
+# =========================
+# AI (Gemini)
+# =========================
+google-generativeai==0.8.3
+
+# =========================
+# Utilities
+# =========================
+python-dotenv==1.0.1
