@@ -205,3 +205,29 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+
+# ==================================================
+# InvoiceXtract-AI (Project Specific Additions)
+# ==================================================
+
+# Backend (FastAPI)
+backend/.env
+backend/venv/
+backend/uploads/
+backend/__pycache__/
+
+# Frontend (React / Vite)
+node_modules/
+dist/
+.vite/
+
+# Frontend environment files
+.env.local
+.env.development
+.env.production
+
+# OS junk
+.DS_Store
+Thumbs.db
