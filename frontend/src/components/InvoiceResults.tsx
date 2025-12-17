@@ -35,11 +35,21 @@ const InvoiceResults = ({ data, onBack, onSave }: InvoiceResultsProps) => {
     });
   };
 
-  const formatCurrency = (amount: number) => {
+  const parseNumber = (v: any): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const cleaned = String(v).replace(/[^0-9.-]+/g, '');
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const formatCurrency = (value: any) => {
+    const n = parseNumber(value);
+    if (n === null) return '—';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-    }).format(amount);
+      maximumFractionDigits: 2,
+    }).format(n);
   };
 
   const formatDate = (dateString: string) => {
@@ -81,22 +91,22 @@ const InvoiceResults = ({ data, onBack, onSave }: InvoiceResultsProps) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <DetailCard label="Invoice Number" value={data.invoice_number || 'N/A'} />
           <DetailCard label="Invoice Date" value={formatDate(data.invoice_date)} />
-          <DetailCard label="Vendor Name" value={data.vendor_name || 'N/A'} />
-          <DetailCard 
-            label="GST Amount" 
-            value={formatCurrency(data.gst_amount || 0)} 
-            highlight 
+          <DetailCard label="Vendor Name" value={data.vendor.name || 'N/A'} />
+          <DetailCard
+            label="GST Amount"
+            value={formatCurrency(data.tax_amount)}
+            highlight
           />
-          <DetailCard 
-            label="Total Amount" 
-            value={formatCurrency(data.total_amount || 0)} 
+          <DetailCard
+            label="Total Amount"
+            value={formatCurrency(data.total)}
             highlight
             accent
           />
         </div>
 
         {/* Line Items Table */}
-        {data.line_items && data.line_items.length > 0 && (
+        {data.items && data.items.length > 0 && (
           <div>
             <h3 className="text-lg font-semibold text-foreground mb-4">Line Items</h3>
             <div className="overflow-x-auto">
@@ -110,21 +120,27 @@ const InvoiceResults = ({ data, onBack, onSave }: InvoiceResultsProps) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.line_items.map((item, index) => (
-                    <tr 
-                      key={index} 
-                      className="border-b border-border/50 hover:bg-secondary/50 transition-colors"
-                    >
-                      <td className="py-4 px-4 text-sm text-foreground">{item.description}</td>
-                      <td className="py-4 px-4 text-sm text-foreground text-right">{item.quantity}</td>
-                      <td className="py-4 px-4 text-sm text-foreground text-right">
-                        {formatCurrency(item.unit_price)}
-                      </td>
-                      <td className="py-4 px-4 text-sm font-medium text-foreground text-right">
-                        {formatCurrency(item.amount)}
-                      </td>
-                    </tr>
-                  ))}
+                  {data.items.map((item, index) => {
+                    const qty = parseNumber(item.quantity);
+                    const unit = parseNumber(item.unit_price);
+                    const totalFromItem = parseNumber(item.total);
+                    const computedTotal = totalFromItem !== null ? totalFromItem : (qty !== null && unit !== null ? qty * unit : null);
+                    return (
+                      <tr
+                        key={index}
+                        className="border-b border-border/50 hover:bg-secondary/50 transition-colors"
+                      >
+                        <td className="py-4 px-4 text-sm text-foreground">{item.description}</td>
+                        <td className="py-4 px-4 text-sm text-foreground text-right">{item.quantity ?? '—'}</td>
+                        <td className="py-4 px-4 text-sm text-foreground text-right">
+                          {formatCurrency(item.unit_price)}
+                        </td>
+                        <td className="py-4 px-4 text-sm font-medium text-foreground text-right">
+                          {formatCurrency(computedTotal)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

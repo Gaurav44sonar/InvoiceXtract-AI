@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+from typing import List
 
 from app.services.pdf_processor import PDFProcessor
 from app.services.ai_extractor import AIExtractor
@@ -17,15 +18,31 @@ app = FastAPI(
 
 # -------------------------------------------------
 # CORS (IMPORTANT for frontend connection)
+# Use FRONTEND_ORIGINS environment variable to configure allowed origins (comma separated).
+# Falls back to common localhost dev ports including 5173 (Vite), 3000, 8080 and 8081.
+# For quick local testing you can set ALLOW_ALL_ORIGINS=1 to allow '*' (not recommended for production).
 # -------------------------------------------------
+frontend_origins = os.getenv("FRONTEND_ORIGINS")
+allow_all = os.getenv("ALLOW_ALL_ORIGINS") == "1"
+if allow_all:
+    allowed_origins: List[str] | str = ["*"]
+elif frontend_origins:
+    allowed_origins = [o.strip() for o in frontend_origins.split(",") if o.strip()]
+else:
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://localhost:8080",   # ← ADD THIS
-],
-
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
