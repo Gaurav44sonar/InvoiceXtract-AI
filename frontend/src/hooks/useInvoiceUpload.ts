@@ -19,23 +19,24 @@ export const useInvoiceUpload = (): UseInvoiceUploadReturn => {
   const upload = useCallback(async (file: File) => {
     setIsUploading(true);
     setError(null);
-    setUploadProgress(10);
+    setUploadProgress(5);
+
+    // Fake progress for UX
+    const interval = setInterval(() => {
+      setUploadProgress((p) => (p < 90 ? p + 10 : p));
+    }, 200);
 
     try {
-      // Fake progress (UX only)
-      const interval = setInterval(() => {
-        setUploadProgress((p) => (p < 90 ? p + 10 : p));
-      }, 200);
-
       const result = await uploadInvoice(file);
-
       clearInterval(interval);
+
       setUploadProgress(100);
       setData(result);
 
       return result;
     } catch (err: any) {
-      setError(err.message || "Upload failed");
+      clearInterval(interval);
+      setError(err?.message || "Invoice upload failed");
       setUploadProgress(0);
       throw err;
     } finally {

@@ -1,52 +1,49 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from bson import ObjectId
+from datetime import datetime
 import shutil
 import os
-from typing import List
 
+from pymongo import MongoClient
 from app.services.pdf_processor import PDFProcessor
 from app.services.ai_extractor import AIExtractor
 
 # -------------------------------------------------
-# App initialization
+# App Init
 # -------------------------------------------------
 app = FastAPI(
-    title="Invoice OCR System",
-    description="Upload invoice PDFs and extract structured data using AI",
-    version="1.0.0",
+    title="InvoiceXtract AI",
+    version="1.0.0"
 )
 
 # -------------------------------------------------
-# CORS (IMPORTANT for frontend connection)
-# Use FRONTEND_ORIGINS environment variable to configure allowed origins (comma separated).
-# Falls back to common localhost dev ports including 5173 (Vite), 3000, 8080 and 8081.
-# For quick local testing you can set ALLOW_ALL_ORIGINS=1 to allow '*' (not recommended for production).
+# CORS
 # -------------------------------------------------
-frontend_origins = os.getenv("FRONTEND_ORIGINS")
-allow_all = os.getenv("ALLOW_ALL_ORIGINS") == "1"
-if allow_all:
-    allowed_origins: List[str] | str = ["*"]
-elif frontend_origins:
-    allowed_origins = [o.strip() for o in frontend_origins.split(",") if o.strip()]
-else:
-    allowed_origins = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://localhost:8081",
-        "http://127.0.0.1:8081",
-    ]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# -------------------------------------------------
+# ENV + MongoDB
+# -------------------------------------------------
+MONGO_URI = os.getenv("MONGO_URI")
+DB_NAME = os.getenv("MONGO_DB", "invoice_xtract")
+
+if not MONGO_URI:
+    raise RuntimeError("❌ MONGO_URI not set in .env")
+
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client[DB_NAME]
+invoice_collection = db["invoices"]
 
 # -------------------------------------------------
 # Services
@@ -54,53 +51,105 @@ app.add_middleware(
 pdf_processor = PDFProcessor()
 ai_extractor = AIExtractor()
 
-# -------------------------------------------------
-# Upload directory
-# -------------------------------------------------
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # -------------------------------------------------
-# Health check (optional but useful)
+# Health
 # -------------------------------------------------
 @app.get("/")
 def root():
-    return {
-        "status": "running",
-        "message": "Invoice OCR Backend is running",
-    }
+    return {"status": "Backend running"}
 
 # -------------------------------------------------
-# Main endpoint: Upload & extract invoice
+# 1️⃣ Extract Invoice (NO SAVE)
 # -------------------------------------------------
 @app.post("/extract-invoice")
 async def extract_invoice(file: UploadFile = File(...)):
-    # Validate file type
     if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are supported",
-        )
+        raise HTTPException(status_code=400, detail="Only PDF allowed")
 
-    # Save uploaded file
     pdf_path = os.path.join(UPLOAD_DIR, file.filename)
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    text = pdf_processor.extract_text(pdf_path)
+    tables = pdf_processor.extract_tables(pdf_path)
+    result = ai_extractor.extract_from_text(text, tables)
+
+    return result
+
+# -------------------------------------------------
+# 2️⃣ Save Invoice to MongoDB
+# -------------------------------------------------
+@app.post("/save-invoice")
+def save_invoice(payload: dict):
     try:
-        # 1️⃣ Extract text from PDF
-        text = pdf_processor.extract_text(pdf_path)
+        doc = {
+            "file_name": payload.get("file_name"),
+            "invoice_number": payload.get("invoice_number"),
+            "invoice_date": payload.get("invoice_date"),
+            "vendor_name": payload.get("vendor", {}).get("name"),
+            "subtotal": payload.get("subtotal"),
+            "tax_amount": payload.get("tax_amount"),
+            "total": payload.get("total"),
+            "currency": payload.get("currency"),
+            "items": payload.get("items", []),
+            "created_at": datetime.utcnow()
+        }
 
-        # 2️⃣ Extract tables from PDF
-        tables = pdf_processor.extract_tables(pdf_path)
-
-        # 3️⃣ AI extraction
-        result = ai_extractor.extract_from_text(text, tables)
-
-        return result
+        res = invoice_collection.insert_one(doc)
+        return {"success": True, "id": str(res.inserted_id)}
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+# -------------------------------------------------
+# 3️⃣ Get Invoice History
+# -------------------------------------------------
+@app.get("/invoices")
+def get_invoices():
+    invoices = []
+
+    for inv in invoice_collection.find().sort("created_at", -1):
+        invoices.append({
+            "id": str(inv["_id"]),
+            "file_name": inv.get("file_name"),
+            "upload_date": inv.get("created_at"),
+            "status": "processed",
+            "data": {
+                "invoice_number": inv.get("invoice_number"),
+                "invoice_date": inv.get("invoice_date"),
+                "vendor_name": inv.get("vendor_name"),
+                "gst_amount": inv.get("tax_amount"),
+                "total_amount": inv.get("total"),
+                "line_items": inv.get("items", [])
+            }
+        })
+
+    return invoices
+
+
+# -------------------------------------------------
+# 4️⃣ Get Single Invoice
+# -------------------------------------------------
+@app.get("/invoices/{invoice_id}")
+def get_invoice(invoice_id: str):
+    inv = invoice_collection.find_one({"_id": ObjectId(invoice_id)})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return {
+        "id": str(inv["_id"]),
+        "file_name": inv.get("file_name"),
+        "upload_date": inv.get("created_at"),
+        "status": "processed",
+        "data": {
+            "invoice_number": inv.get("invoice_number"),
+            "invoice_date": inv.get("invoice_date"),
+            "vendor_name": inv.get("vendor_name"),
+            "gst_amount": inv.get("tax_amount"),
+            "total_amount": inv.get("total"),
+            "line_items": inv.get("items", [])
+        }
+    }
