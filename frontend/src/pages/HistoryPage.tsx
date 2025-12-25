@@ -73,11 +73,23 @@ const HistoryPage = () => {
 };
 
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-    }).format(amount);
+const parseNumber = (v: any): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const cleaned = String(v).replace(/[^0-9.-]+/g, "");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+};
+
+const formatCurrency = (value: any) => {
+  const n = parseNumber(value);
+  if (n === null) return "—";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(n);
+};
+
 
   const downloadJSON = (data: ExtractedInvoiceData, fileName: string) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -170,11 +182,17 @@ const HistoryPage = () => {
                   </p>
                 </div>
 
-                {inv.data && (
+                {/* {inv.data && (
                   <span className="font-semibold text-accent">
                     {formatCurrency(inv.data.total)}
                   </span>
-                )}
+                )} */}
+                {inv.data && (
+  <span className="font-semibold text-accent">
+    {formatCurrency(inv.data?.total_amount)}
+  </span>
+)}
+
 
                 <div className="flex gap-2">
                   <Button
